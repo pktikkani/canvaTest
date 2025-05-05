@@ -17,10 +17,11 @@ CANVA_TOKEN_URL = "https://api.canva.com/oauth/token"
 
 # Request scopes
 SCOPES = [
-    "design:meta:read",
+    "brandtemplate:content:read",
+    "brandtemplate:meta:read",
     "design:content:read",
-    "asset:read",
-    "asset:write",
+    "design:content:write",
+    "design:meta:read",
     "profile:read"
 ]
 
