@@ -11,7 +11,7 @@ from urllib.parse import urlencode, quote_plus
 # These should be stored in environment variables in a production environment
 CANVA_CLIENT_ID = os.getenv("CANVA_CLIENT_ID")  # Replace with your client ID
 CANVA_CLIENT_SECRET = os.getenv("CANVA_CLIENT_SECRET")  # Replace with your client secret
-REDIRECT_URI = "http://127.0.0.1:5001/oauth/redirect"
+REDIRECT_URI = "https://canvatest-production.up.railway.app/oauth/redirect"
 CANVA_AUTH_URL = "https://www.canva.com/api/oauth/authorize"
 CANVA_TOKEN_URL = "https://api.canva.com/oauth/token"
 
