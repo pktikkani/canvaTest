@@ -13,7 +13,7 @@ CANVA_CLIENT_ID = os.getenv("CANVA_CLIENT_ID")  # Replace with your client ID
 CANVA_CLIENT_SECRET = os.getenv("CANVA_CLIENT_SECRET")  # Replace with your client secret
 REDIRECT_URI = "https://canvatest-production.up.railway.app/oauth/redirect"
 CANVA_AUTH_URL = "https://www.canva.com/api/oauth/authorize"
-CANVA_TOKEN_URL = "https://api.canva.com/oauth/token"
+CANVA_TOKEN_URL = "https://api.canva.com/rest/v1/oauth/token"
 
 # Request scopes
 SCOPES = [
@@ -147,20 +147,50 @@ def oauth_redirect(request):
     
     # Exchange code for access token
     try:
+        # Prepare credentials for Basic Auth
+        credentials = base64.b64encode(f"{CANVA_CLIENT_ID}:{CANVA_CLIENT_SECRET}".encode()).decode()
+        
+        # Prepare form data
+        data = {
+            'grant_type': 'authorization_code',
+            'code': code,
+            'redirect_uri': REDIRECT_URI,
+            'code_verifier': session['code_verifier']
+        }
+        
+        # Print debug info before the request
+        print(f"Token URL: {CANVA_TOKEN_URL}")
+        print(f"Client ID: {CANVA_CLIENT_ID}")
+        print(f"Redirect URI: {REDIRECT_URI}")
+        print(f"Code length: {len(code) if code else 'None'}")
+        print(f"Code verifier length: {len(session['code_verifier']) if 'code_verifier' in session else 'None'}")
+        
+        # Make the token request
         token_response = requests.post(
             CANVA_TOKEN_URL,
             headers={
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': f'Basic {base64.b64encode(f"{CANVA_CLIENT_ID}:{CANVA_CLIENT_SECRET}".encode()).decode()}'
+                'Authorization': f'Basic {credentials}'
             },
-            data={
-                'grant_type': 'authorization_code',
-                'code': code,
-                'redirect_uri': REDIRECT_URI,
-                'code_verifier': session['code_verifier']
-            }
+            data=data
         )
-        token_data = token_response.json()
+        
+        # Debug information
+        print(f"Status code: {token_response.status_code}")
+        print(f"Response content: {token_response.content}")
+        
+        # Check if the response is valid JSON
+        try:
+            token_data = token_response.json()
+        except json.JSONDecodeError as json_error:
+            return Body(
+                Main(cls="container")(
+                    Div(cls="alert alert-danger")(
+                        f"Invalid response from token endpoint: Status {token_response.status_code}, Content: {token_response.content}"
+                    ),
+                    A("Back to Home", href="/", cls="btn")
+                )
+            )
         
         if 'access_token' not in token_data:
             return Body(
