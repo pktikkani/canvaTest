@@ -280,23 +280,60 @@ def create_design(request, title: str):
     
     # Create design API call
     try:
+        # Correct endpoint URL based on documentation
         design_response = requests.post(
-            "https://api.canva.com/v1/designs",
+            "https://api.canva.com/rest/v1/designs",
             headers={
                 'Authorization': f'Bearer {access_token}',
                 'Content-Type': 'application/json'
             },
             json={
                 'title': title,
-                'type': 'PRESENTATION'  # Options: PRESENTATION, WHITEBOARD, POSTER, etc.
+                'design_type': {
+                    'type': 'preset',
+                    'name': 'presentation'  # Options: "doc", "whiteboard", "presentation"
+                }
             }
         )
         
-        design_data = design_response.json()
+        # Debug information
+        print(f"Design creation status: {design_response.status_code}")
+        print(f"Design creation response: {design_response.content}")
         
-        if 'id' in design_data:
-            design_id = design_data['id']
-            design_url = design_data.get('editUrl', f"https://www.canva.com/design/{design_id}")
+        # Check if we got a valid response
+        if design_response.status_code != 200:
+            return Body(
+                Main(cls="container")(
+                    Div(cls="alert alert-danger")(
+                        f"Failed to create design: Status {design_response.status_code}, Response: {design_response.content}"
+                    ),
+                    A("Back to Dashboard", href="/dashboard", cls="btn")
+                )
+            )
+        
+        # Try to parse JSON response
+        try:
+            design_data = design_response.json()
+        except json.JSONDecodeError:
+            return Body(
+                Main(cls="container")(
+                    Div(cls="alert alert-danger")(
+                        f"Invalid response from Canva: {design_response.content}"
+                    ),
+                    A("Back to Dashboard", href="/dashboard", cls="btn")
+                )
+            )
+        
+        # Process response according to API documentation
+        if 'design' in design_data:
+            design = design_data['design']
+            design_id = design['id']
+            
+            # Get the edit URL from the URLs object
+            if 'urls' in design and 'edit_url' in design['urls']:
+                design_url = design['urls']['edit_url']
+            else:
+                design_url = f"https://www.canva.com/design/{design_id}"
             
             return Body(
                 Main(cls="container")(
