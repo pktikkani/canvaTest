@@ -22,7 +22,9 @@ SCOPES = [
     "design:content:read",
     "design:content:write",
     "design:meta:read",
-    "profile:read"
+    "profile:read",
+    "asset:read",
+    "asset:write"
 ]
 
 # Session storage (in-memory for demo only)
@@ -261,7 +263,12 @@ def dashboard(request):
                     Button("Create Design", type="submit", cls="btn")
                 )
             ),
-            A("Logout", href=logout, cls="btn")
+            Div(cls="card mt-4")(
+                H2("Brand Templates"),
+                P("Work with brand templates and autofill data."),
+                A("View Brand Templates", href=list_brand_templates, cls="btn")
+            ),
+            A("Logout", href=logout, cls="btn mt-4")
         )
     )
 
@@ -365,6 +372,397 @@ def create_design(request, title: str):
             Main(cls="container")(
                 Div(cls="alert alert-danger")(
                     f"Error creating design: {str(e)}"
+                ),
+                A("Back to Dashboard", href="/dashboard", cls="btn")
+            )
+        )
+
+@rt("/brand-templates")
+def list_brand_templates(request):
+    """List all brand templates."""
+    session_id = request.cookies.get('session_id')
+    if not session_id or session_id not in sessions:
+        return RedirectResponse(url="/")
+    
+    session = sessions[session_id]
+    if 'access_token' not in session:
+        return RedirectResponse(url="/")
+    
+    access_token = session['access_token']
+    
+    # Get brand templates from Canva API
+    try:
+        templates_response = requests.get(
+            "https://api.canva.com/rest/v1/brand-templates",
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+        
+        # Debug information
+        print(f"Brand templates status: {templates_response.status_code}")
+        print(f"Brand templates response: {templates_response.content}")
+        
+        if templates_response.status_code != 200:
+            return Body(
+                Main(cls="container")(
+                    H1("Brand Templates"),
+                    Div(cls="alert alert-danger")(
+                        f"Failed to get brand templates: Status {templates_response.status_code}, Response: {templates_response.content}"
+                    ),
+                    A("Back to Dashboard", href="/dashboard", cls="btn")
+                )
+            )
+        
+        templates_data = templates_response.json()
+        templates = templates_data.get('brand_templates', [])
+        
+        template_list = []
+        for template in templates:
+            template_id = template.get('id')
+            title = template.get('title', 'Untitled Template')
+            
+            template_list.append(
+                Div(cls="card mb-3")(
+                    Div(cls="card-body")(
+                        H3(title, cls="card-title"),
+                        P(f"ID: {template_id}", cls="card-text"),
+                        A("View Template Details", href=f"/brand-templates/{template_id}", cls="btn")
+                    )
+                )
+            )
+        
+        if not template_list:
+            template_list = [
+                Div(cls="alert alert-info")(
+                    "No brand templates found. Please create a brand template in your Canva account."
+                )
+            ]
+        
+        return Body(
+            Main(cls="container")(
+                H1("Brand Templates"),
+                P("These are the brand templates available in your Canva account:"),
+                *template_list,
+                A("Back to Dashboard", href="/dashboard", cls="btn")
+            )
+        )
+    
+    except Exception as e:
+        return Body(
+            Main(cls="container")(
+                H1("Brand Templates"),
+                Div(cls="alert alert-danger")(
+                    f"Error fetching brand templates: {str(e)}"
+                ),
+                A("Back to Dashboard", href="/dashboard", cls="btn")
+            )
+        )
+
+@rt("/brand-templates/{template_id}")
+def view_brand_template(request, template_id: str):
+    """View a specific brand template."""
+    session_id = request.cookies.get('session_id')
+    if not session_id or session_id not in sessions:
+        return RedirectResponse(url="/")
+    
+    session = sessions[session_id]
+    if 'access_token' not in session:
+        return RedirectResponse(url="/")
+    
+    access_token = session['access_token']
+    
+    # Get brand template details
+    try:
+        template_response = requests.get(
+            f"https://api.canva.com/rest/v1/brand-templates/{template_id}",
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+        
+        # Debug information
+        print(f"Template details status: {template_response.status_code}")
+        print(f"Template details response: {template_response.content}")
+        
+        if template_response.status_code != 200:
+            return Body(
+                Main(cls="container")(
+                    H1("Brand Template Details"),
+                    Div(cls="alert alert-danger")(
+                        f"Failed to get template details: Status {template_response.status_code}, Response: {template_response.content}"
+                    ),
+                    A("Back to Templates", href="/brand-templates", cls="btn")
+                )
+            )
+        
+        template_data = template_response.json()
+        template = template_data.get('brand_template', {})
+        
+        title = template.get('title', 'Untitled Template')
+        thumbnail_url = template.get('thumbnail', {}).get('url', '')
+        
+        # Get dataset (autofillable fields)
+        dataset_response = requests.get(
+            f"https://api.canva.com/rest/v1/brand-templates/{template_id}/dataset",
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+        
+        # Debug information
+        print(f"Dataset status: {dataset_response.status_code}")
+        print(f"Dataset response: {dataset_response.content}")
+        
+        has_dataset = dataset_response.status_code == 200
+        dataset = {}
+        
+        if has_dataset:
+            dataset_data = dataset_response.json()
+            dataset = dataset_data.get('dataset', {})
+        
+        # Create field inputs for autofill form
+        field_inputs = []
+        
+        for field_name, field_info in dataset.items():
+            field_type = field_info.get('type')
+            
+            if field_type == 'text':
+                field_inputs.append(
+                    Div(cls="form-group")(
+                        Label(f"{field_name} (Text)"),
+                        Input(type="text", name=f"text_{field_name}", cls="form-control")
+                    )
+                )
+            elif field_type == 'image':
+                field_inputs.append(
+                    Div(cls="form-group")(
+                        Label(f"{field_name} (Image)"),
+                        Input(type="file", name=f"image_{field_name}", cls="form-control"),
+                        P("Note: Image upload will be implemented in a future update", cls="text-muted small")
+                    )
+                )
+        
+        autofill_form = []
+        if field_inputs:
+            autofill_form = [
+                Div(cls="card mt-4")(
+                    Div(cls="card-body")(
+                        H3("Autofill Template"),
+                        Form(method="post", action=f"/autofill/{template_id}", enctype="multipart/form-data")(
+                            *field_inputs,
+                            Button("Create Autofilled Design", type="submit", cls="btn")
+                        )
+                    )
+                )
+            ]
+        
+        return Body(
+            Main(cls="container")(
+                H1("Brand Template Details"),
+                Div(cls="card")(
+                    Div(cls="card-body")(
+                        H2(title, cls="card-title"),
+                        P(f"Template ID: {template_id}", cls="card-text"),
+                        Img(src=thumbnail_url) if thumbnail_url else "",
+                        A("View in Canva", href=f"https://www.canva.com/brand-templates/{template_id}", target="_blank", cls="btn mt-3")
+                    )
+                ),
+                Div(cls="card mt-4")(
+                    Div(cls="card-body")(
+                        H3("Dataset Information"),
+                        P("This template has the following autofillable fields:") if dataset else P("This template does not have any autofillable fields."),
+                        Ul(*[Li(f"{field_name}: {field_info.get('type')}") for field_name, field_info in dataset.items()]) if dataset else ""
+                    )
+                ),
+                *autofill_form,
+                A("Back to Templates", href="/brand-templates", cls="btn mt-4")
+            )
+        )
+    
+    except Exception as e:
+        return Body(
+            Main(cls="container")(
+                H1("Brand Template Details"),
+                Div(cls="alert alert-danger")(
+                    f"Error fetching template details: {str(e)}"
+                ),
+                A("Back to Templates", href="/brand-templates", cls="btn")
+            )
+        )
+
+@rt("/autofill/{template_id}")
+def autofill_template(request, template_id: str):
+    """Create an autofilled design from a brand template."""
+    session_id = request.cookies.get('session_id')
+    if not session_id or session_id not in sessions:
+        return RedirectResponse(url="/")
+    
+    session = sessions[session_id]
+    if 'access_token' not in session:
+        return RedirectResponse(url="/")
+    
+    access_token = session['access_token']
+    
+    # Get form data
+    form_data = {}
+    for key, value in request.form.items():
+        if key.startswith("text_"):
+            field_name = key[5:]  # Remove "text_" prefix
+            form_data[field_name] = {"type": "text", "text": value}
+    
+    # For now, we'll handle only text fields. Image fields require more complex handling.
+    
+    try:
+        # Create autofill job
+        autofill_response = requests.post(
+            "https://api.canva.com/rest/v1/autofills",
+            headers={
+                'Authorization': f'Bearer {access_token}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                "brand_template_id": template_id,
+                "data": form_data
+            }
+        )
+        
+        # Debug information
+        print(f"Autofill job status: {autofill_response.status_code}")
+        print(f"Autofill job response: {autofill_response.content}")
+        
+        if autofill_response.status_code not in [200, 201, 202]:
+            return Body(
+                Main(cls="container")(
+                    H1("Autofill Template"),
+                    Div(cls="alert alert-danger")(
+                        f"Failed to create autofill job: Status {autofill_response.status_code}, Response: {autofill_response.content}"
+                    ),
+                    A("Back to Template", href=f"/brand-templates/{template_id}", cls="btn")
+                )
+            )
+        
+        autofill_data = autofill_response.json()
+        job_id = autofill_data.get('job', {}).get('id')
+        
+        if not job_id:
+            return Body(
+                Main(cls="container")(
+                    H1("Autofill Template"),
+                    Div(cls="alert alert-danger")(
+                        "Failed to get job ID from autofill response"
+                    ),
+                    A("Back to Template", href=f"/brand-templates/{template_id}", cls="btn")
+                )
+            )
+        
+        # Store job ID in session
+        session['autofill_job_id'] = job_id
+        
+        # Redirect to job status page
+        return RedirectResponse(url=f"/autofill-status/{job_id}")
+    
+    except Exception as e:
+        return Body(
+            Main(cls="container")(
+                H1("Autofill Template"),
+                Div(cls="alert alert-danger")(
+                    f"Error creating autofill job: {str(e)}"
+                ),
+                A("Back to Template", href=f"/brand-templates/{template_id}", cls="btn")
+            )
+        )
+
+@rt("/autofill-status/{job_id}")
+def autofill_status(request, job_id: str):
+    """Check the status of an autofill job."""
+    session_id = request.cookies.get('session_id')
+    if not session_id or session_id not in sessions:
+        return RedirectResponse(url="/")
+    
+    session = sessions[session_id]
+    if 'access_token' not in session:
+        return RedirectResponse(url="/")
+    
+    access_token = session['access_token']
+    
+    try:
+        # Get job status
+        status_response = requests.get(
+            f"https://api.canva.com/rest/v1/autofills/{job_id}",
+            headers={'Authorization': f'Bearer {access_token}'}
+        )
+        
+        # Debug information
+        print(f"Job status response status: {status_response.status_code}")
+        print(f"Job status response: {status_response.content}")
+        
+        if status_response.status_code != 200:
+            return Body(
+                Main(cls="container")(
+                    H1("Autofill Job Status"),
+                    Div(cls="alert alert-danger")(
+                        f"Failed to get job status: Status {status_response.status_code}, Response: {status_response.content}"
+                    ),
+                    A("Back to Dashboard", href="/dashboard", cls="btn")
+                )
+            )
+        
+        status_data = status_response.json()
+        job = status_data.get('job', {})
+        job_status = job.get('status')
+        
+        if job_status == 'in_progress':
+            # Job is still in progress, show a loading page with refresh
+            return Body(
+                Script('setTimeout(function() { window.location.reload(); }, 2000);'),  # Refresh every 2 seconds
+                Main(cls="container")(
+                    H1("Processing Your Design"),
+                    Div(cls="alert alert-info")(
+                        "Your design is being generated. Please wait..."
+                    ),
+                    Div(cls="progress")(
+                        Div(cls="progress-bar progress-bar-striped progress-bar-animated", style="width: 100%")
+                    )
+                )
+            )
+        elif job_status == 'success':
+            # Job completed successfully
+            result = job.get('result', {})
+            design = result.get('design', {})
+            design_url = design.get('url', '')
+            thumbnail_url = design.get('thumbnail', {}).get('url', '')
+            
+            return Body(
+                Main(cls="container")(
+                    H1("Design Created!"),
+                    Div(cls="alert alert-success")(
+                        "Your autofilled design has been created successfully!"
+                    ),
+                    Div(cls="card")(
+                        Div(cls="card-body")(
+                            H2("Your Autofilled Design", cls="card-title"),
+                            Img(src=thumbnail_url, cls="img-fluid mb-3") if thumbnail_url else "",
+                            A("Open Design in Canva", href=design_url, target="_blank", cls="btn")
+                        )
+                    ),
+                    A("Back to Dashboard", href="/dashboard", cls="btn mt-4")
+                )
+            )
+        else:
+            # Job failed or has unknown status
+            error_message = job.get('error', {}).get('message', 'Unknown error')
+            
+            return Body(
+                Main(cls="container")(
+                    H1("Autofill Job Status"),
+                    Div(cls="alert alert-danger")(
+                        f"Job failed: {error_message}"
+                    ),
+                    A("Back to Dashboard", href="/dashboard", cls="btn")
+                )
+            )
+    
+    except Exception as e:
+        return Body(
+            Main(cls="container")(
+                H1("Autofill Job Status"),
+                Div(cls="alert alert-danger")(
+                    f"Error checking job status: {str(e)}"
                 ),
                 A("Back to Dashboard", href="/dashboard", cls="btn")
             )
